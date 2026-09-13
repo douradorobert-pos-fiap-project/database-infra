@@ -1,0 +1,97 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Terraform Init",
+      "type": "shell",
+      "command": "terraform",
+      "args": ["-chdir=terraform", "init"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Terraform Format",
+      "type": "shell",
+      "command": "terraform",
+      "args": ["-chdir=terraform", "fmt", "-check"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Terraform Validate",
+      "type": "shell",
+      "command": "terraform",
+      "args": ["-chdir=terraform", "validate"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Terraform Plan",
+      "type": "shell",
+      "command": "./scripts/plan-database.sh",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Terraform Apply",
+      "type": "shell",
+      "command": "./scripts/apply-database.sh",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Terraform Destroy",
+      "type": "shell",
+      "command": "terraform",
+      "args": [
+        "-chdir=terraform",
+        "destroy",
+        "-var-file=environments/sandbox/terraform.tfvars"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Terraform Full (Init + Validate + Plan)",
+      "type": "shell",
+      "command": "terraform",
+      "args": ["-chdir=terraform", "init"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "dependsOn": ["Terraform Validate"]
+    },
+    {
+      "label": "Terraform Validate (after Init)",
+      "type": "shell",
+      "command": "terraform",
+      "args": ["-chdir=terraform", "validate"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "dependsOn": ["Terraform Plan"]
+    }
+  ]
+}
