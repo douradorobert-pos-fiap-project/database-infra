@@ -10,6 +10,18 @@ variable "environment" {
   default     = "sandbox"
 }
 
+variable "infra_state_bucket" {
+  description = "S3 bucket where shared-infra Terraform state is stored."
+  type        = string
+  default     = "terraform-state-264040538379-us-east-1"
+}
+
+variable "infra_state_key" {
+  description = "S3 key of the shared-infra Terraform state file."
+  type        = string
+  default     = "sandbox/terraform.tfstate"
+}
+
 variable "db_name" {
   description = "Initial PostgreSQL database name."
   type        = string
