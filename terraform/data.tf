@@ -1,16 +1,15 @@
-# These data sources deliberately use shared-infra's stable tags instead of a
-# Terraform state dependency. shared-infra creates Name=sandbox-vpc and marks
-# its private subnets with Environment=sandbox and Type=private.
-data "aws_vpc" "shared" {
-  filter {
-    name   = "tag:Name"
-    values = ["${var.environment}-vpc"]
-  }
+data "terraform_remote_state" "infra" {
+  backend = "s3"
 
-  filter {
-    name   = "tag:Environment"
-    values = [var.environment]
+  config = {
+    bucket = var.infra_state_bucket
+    key    = var.infra_state_key
+    region = var.aws_region
   }
+}
+
+data "aws_vpc" "shared" {
+  id = data.terraform_remote_state.infra.outputs.vpc_id
 }
 
 data "aws_subnets" "private" {

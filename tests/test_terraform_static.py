@@ -30,11 +30,17 @@ class TestDatabaseTerraform(unittest.TestCase):
         self.assertIn('name   = "tag:Type"', self.data)
         self.assertIn('values = ["private"]', self.data)
 
-    def test_vpc_is_discovered_by_shared_infra_tags(self):
-        self.assertIn('data "aws_vpc" "shared"', self.data)
-        self.assertIn('name   = "tag:Name"', self.data)
-        self.assertIn('"${var.environment}-vpc"', self.data)
-        self.assertIn('name   = "tag:Environment"', self.data)
+    def test_vpc_is_discovered_by_remote_state(self):
+        self.assertIn('data "terraform_remote_state" "infra"', self.data)
+        self.assertIn('backend = "s3"', self.data)
+        self.assertIn('data.terraform_remote_state.infra.outputs.vpc_id', self.data)
+
+    def test_no_hardcoded_vpc_ids(self):
+        self.assertNotRegex(self.data, r'id\s*=\s*"vpc-[0-9a-f]+"')
+
+    def test_remote_state_variables_exist(self):
+        self.assertIn('variable "infra_state_bucket"', self.variables)
+        self.assertIn('variable "infra_state_key"', self.variables)
 
     def test_dedicated_security_group_and_private_postgres_rule(self):
         self.assertIn('resource "aws_security_group" "rds"', self.main)
