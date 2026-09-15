@@ -3,7 +3,6 @@ environment             = "sandbox"
 infra_state_bucket      = "terraform-state-264040538379-us-east-1"
 infra_state_key         = "sandbox/terraform.tfstate"
 db_name                 = "oficina"
-db_username             = "oficina_admin"
 db_instance_class       = "db.t4g.micro"
 engine_version          = "16"
 allocated_storage       = 20
