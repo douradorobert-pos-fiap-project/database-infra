@@ -17,9 +17,6 @@ jobs:
     env:
       TF_VAR_db_username: ${{ vars.DB_USERNAME || 'oficina_admin' }}
       TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-    defaults:
-      run:
-        working-directory: terraform
     steps:
       - uses: actions/checkout@v4
 
@@ -39,13 +36,13 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: Terraform Format
-        run: terraform fmt -check -recursive
+        run: terraform -chdir=terraform fmt -check -recursive
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform -chdir=terraform init
 
       - name: Terraform Validate
-        run: terraform validate
+        run: terraform -chdir=terraform validate
 
       - name: Terraform Plan
         run: ./scripts/plan-database.sh
@@ -59,9 +56,6 @@ jobs:
     env:
       TF_VAR_db_username: ${{ vars.DB_USERNAME || 'oficina_admin' }}
       TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-    defaults:
-      run:
-        working-directory: terraform
     steps:
       - uses: actions/checkout@v4
 
@@ -81,13 +75,13 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: Terraform Format
-        run: terraform fmt -check -recursive
+        run: terraform -chdir=terraform fmt -check -recursive
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform -chdir=terraform init
 
       - name: Terraform Validate
-        run: terraform validate
+        run: terraform -chdir=terraform validate
 
       - name: Terraform Plan
         run: ./scripts/plan-database.sh
