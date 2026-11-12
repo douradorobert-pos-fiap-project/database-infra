@@ -73,3 +73,47 @@ variable "skip_final_snapshot" {
   type        = bool
   default     = true
 }
+
+variable "enable_logical_database_bootstrap" {
+  description = "Run local psql bootstrap only from a runner with private RDS connectivity."
+  type        = bool
+  default     = false
+}
+
+variable "os_database" {
+  description = "Logical database owned exclusively by OS Service."
+  type        = string
+  default     = "os_service_db"
+}
+
+variable "os_database_username" {
+  description = "Login role owned exclusively by OS Service."
+  type        = string
+  default     = "os_service_user"
+}
+
+variable "os_db_password" {
+  description = "OS Service logical database password."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "billing_database" {
+  description = "Logical database owned exclusively by Billing Service."
+  type        = string
+  default     = "billing_service_db"
+}
+
+variable "billing_database_username" {
+  description = "Login role owned exclusively by Billing Service."
+  type        = string
+  default     = "billing_service_user"
+}
+
+variable "billing_db_password" {
+  description = "Billing Service logical database password."
+  type        = string
+  sensitive   = true
+  default     = null
+}
