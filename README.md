@@ -48,6 +48,33 @@ Pull requests executam format, init sem backend remoto, validate e testes estát
 
 As credenciais de serviço são separadas da credencial administradora do RDS. `OS_DB_PASSWORD` e `BILLING_DB_PASSWORD` serão usados pelo Job Kubernetes de bootstrap para criar usuários e bancos exclusivos; não são usados para provisionar a instância RDS.
 
+## Bootstrap dos bancos lógicos no EKS
+
+O RDS é privado, portanto o runner público do GitHub não executa `psql` diretamente. Depois do apply do RDS e da criação do namespace `oficina`, obtenha `rds_endpoint` com `terraform output` e disponibilize estas variáveis apenas na sessão segura que possui acesso ao cluster:
+
+```text
+RDS_ENDPOINT, RDS_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD
+OS_DATABASE, OS_DATABASE_USERNAME, OS_DB_PASSWORD
+BILLING_DATABASE, BILLING_DATABASE_USERNAME, BILLING_DB_PASSWORD
+```
+
+Sincronize o script e o Secret sem gerar arquivo contendo credenciais:
+
+```bash
+./scripts/render-database-bootstrap-secret.sh
+```
+
+O script usa `kubectl create ... --dry-run=client -o yaml | kubectl apply -f -`; não habilite `set -x` e não salve a saída intermediária. Em seguida, recrie e acompanhe o Job:
+
+```bash
+kubectl -n oficina delete job database-bootstrap --ignore-not-found
+kubectl apply -f k8s/database-bootstrap-job.yaml
+kubectl -n oficina wait --for=condition=complete job/database-bootstrap --timeout=180s
+kubectl -n oficina logs job/database-bootstrap
+```
+
+O SQL é idempotente: cria roles e bancos quando ausentes e atualiza as senhas das roles quando já existem. Assim, uma renovação de secrets pode repetir o procedimento com segurança. O Job recebe `ttlSecondsAfterFinished`; para limpeza imediata, use `kubectl -n oficina delete job database-bootstrap`. Depois do bootstrap, execute os Jobs Alembic do OS Service e do Billing Service, cada um com sua própria credencial.
+
 ## Outputs e conexão da aplicação
 
 Após o apply, `rds_endpoint`, `rds_port`, `database_name` e `database_username` descrevem a conexão administradora. O bootstrap executado dentro do EKS cria `os_service_db`/`os_service_user` e `billing_service_db`/`billing_service_user`. As migrations Alembic pertencem aos repositórios OS e Billing e executam depois do bootstrap, usando somente a credencial de cada serviço.

@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+for variable_name in \
+  PGHOST PGPORT PGDATABASE PGUSER PGPASSWORD \
+  OS_DATABASE OS_DATABASE_USER OS_DATABASE_PASSWORD \
+  BILLING_DATABASE BILLING_DATABASE_USER BILLING_DATABASE_PASSWORD; do
+  if [[ -z "${!variable_name:-}" ]]; then
+    printf 'Missing required database bootstrap value: %s\n' "$variable_name" >&2
+    exit 2
+  fi
+done
+
 for identifier in "$OS_DATABASE" "$OS_DATABASE_USER" "$BILLING_DATABASE" "$BILLING_DATABASE_USER"; do
   if [[ ! "$identifier" =~ ^[a-z_][a-z0-9_]*$ ]]; then
     echo "Invalid PostgreSQL identifier" >&2

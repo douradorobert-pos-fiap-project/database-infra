@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-bootstrap
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: database-bootstrap
+    app.kubernetes.io/part-of: oficina
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: database-bootstrap
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bootstrap
+          image: postgres:16.6-alpine
+          command: [/bin/sh, /bootstrap/bootstrap-logical-databases.sh]
+          envFrom:
+            - secretRef:
+                name: database-bootstrap-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: bootstrap-script
+              mountPath: /bootstrap
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: bootstrap-script
+          configMap:
+            name: database-bootstrap-script
+            defaultMode: 0555
+        - name: tmp
+          emptyDir: {}
