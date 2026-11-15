@@ -2,6 +2,23 @@
 
 Este repositório provisiona somente o PostgreSQL gerenciado (Amazon RDS) do sandbox da aplicação Oficina. Ele cria um RDS PostgreSQL privado, seu DB subnet group e um security group dedicado. Não cria VPC, subnets, EKS, IAM, Secrets Manager, observabilidade, migrations ou recursos Kubernetes.
 
+## Arquitetura deste repositório
+
+```mermaid
+flowchart LR
+    shared[shared-infra: VPC e subnets privadas] -->|Descoberta por tags AWS| subnet[DB subnet group]
+    shared -->|CIDR da VPC| sg[Security group: TCP 5432]
+    subnet --> rds[(Amazon RDS PostgreSQL privado)]
+    sg --> rds
+    app[Aplicação Oficina no EKS] -->|Conexão PostgreSQL pela VPC| rds
+```
+
+O diagrama mostra os recursos criados aqui e suas dependências externas; a aplicação gerencia as migrations em seu próprio repositório.
+
+## Tecnologias utilizadas
+
+Terraform, provider AWS, Amazon RDS PostgreSQL, VPC/security groups da AWS, S3 para o state, scripts Bash e GitHub Actions. Os testes estáticos usam Python `unittest`.
+
 ## Relação com a infraestrutura compartilhada
 
 `shared-infra` deve ser aplicado primeiro. Este projeto presume que, na região configurada em `AWS_REGION`, ele já criou uma VPC com `Name=sandbox-vpc` e `Environment=sandbox`, além de subnets privadas com `Environment=sandbox` e `Type=private` (hoje `10.0.10.0/24` e `10.0.11.0/24`).
@@ -78,3 +95,7 @@ O SQL é idempotente: cria roles e bancos quando ausentes e atualiza as senhas d
 ## Outputs e conexão da aplicação
 
 Após o apply, `rds_endpoint`, `rds_port`, `database_name` e `database_username` descrevem a conexão administradora. O bootstrap executado dentro do EKS cria `os_service_db`/`os_service_user` e `billing_service_db`/`billing_service_user`. As migrations Alembic pertencem aos repositórios OS e Billing e executam depois do bootstrap, usando somente a credencial de cada serviço.
+
+## Documentação das APIs
+
+Este repositório provisiona bancos e não expõe API HTTP, portanto não possui Swagger ou coleção Postman própria. As APIs são documentadas nos repositórios dos respectivos microsserviços.
