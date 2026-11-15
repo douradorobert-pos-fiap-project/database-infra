@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JOB = ROOT / "k8s" / "database-bootstrap-job.yaml"
 BOOTSTRAP = ROOT / "scripts" / "bootstrap-logical-databases.sh"
 SYNC = ROOT / "scripts" / "render-database-bootstrap-secret.sh"
-PREFLIGHT = ROOT / "scripts" / "validate-sandbox-config.sh"
+PREFLIGHT = ROOT / "scripts" / "validate-deployment-config.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "terraform.yml"
 
 
@@ -50,11 +50,15 @@ class TestDatabaseBootstrap(unittest.TestCase):
         for secret in ("DB_PASSWORD", "OS_DB_PASSWORD", "BILLING_DB_PASSWORD"):
             self.assertIn(f"secrets.{secret}", workflow)
 
+        self.assertIn("scripts/validate-deployment-config.sh", workflow)
+        local_validation_position = workflow.index("scripts/validate-deployment-config.sh")
+        credentials_position = workflow.index("aws-actions/configure-aws-credentials@v4")
         apply_position = workflow.index("./scripts/apply-database.sh")
         output_position = workflow.index("output -raw rds_endpoint")
         kubeconfig_position = workflow.index("aws eks update-kubeconfig")
         render_position = workflow.index("scripts/render-database-bootstrap-secret.sh")
         job_position = workflow.index("kubectl apply -f k8s/database-bootstrap-job.yaml")
+        self.assertLess(local_validation_position, credentials_position)
         self.assertLess(apply_position, output_position)
         self.assertLess(output_position, kubeconfig_position)
         self.assertLess(kubeconfig_position, render_position)
@@ -86,6 +90,9 @@ class TestDatabaseBootstrap(unittest.TestCase):
                 **os.environ,
                 "PATH": f"{temp_path}:{os.environ['PATH']}",
                 "FAKE_AWS_LOG": str(aws_log),
+                "AWS_ACCESS_KEY_ID": "test-access-key",
+                "AWS_SECRET_ACCESS_KEY": "test-secret-key",
+                "AWS_SESSION_TOKEN": "test-session-token",
                 "AWS_REGION": "us-east-1",
                 "TF_STATE_BUCKET": "terraform-state-example",
                 "EKS_CLUSTER_NAME": "oficina-sandbox",

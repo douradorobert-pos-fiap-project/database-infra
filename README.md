@@ -61,7 +61,7 @@ Use `TFVARS_FILE=/caminho/arquivo.tfvars` para outro arquivo. Não coloque `db_p
 
 Configure os GitHub Secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `DB_PASSWORD`, `OS_DB_PASSWORD` e `BILLING_DB_PASSWORD`. Configure as GitHub Variables `AWS_REGION`, `TF_STATE_BUCKET`, `EKS_CLUSTER_NAME`, `DB_NAME`, `DB_USERNAME`, `OS_DATABASE`, `OS_DATABASE_USERNAME`, `BILLING_DATABASE` e `BILLING_DATABASE_USERNAME`.
 
-Pull requests executam format, init sem backend remoto, validate e todos os testes sem acessar a AWS. Plan, apply e bootstrap executam somente por `workflow_dispatch`, protegidos pelo environment `sandbox`. O preflight confirma todas as configurações obrigatórias, identidade, acesso ao bucket e existência da VPC compartilhada antes de planejar o RDS.
+Pull requests executam format, init sem backend remoto, validate e todos os testes sem acessar a AWS. Plan, apply e bootstrap executam somente por `workflow_dispatch`, protegidos pelo environment `sandbox`. Antes de autenticar na AWS, o workflow confirma localmente todas as Variables e Secrets obrigatórias. Depois da autenticação, confirma identidade, acesso ao bucket e existência da VPC compartilhada antes de planejar o RDS.
 
 As credenciais de serviço são separadas da credencial administradora do RDS. `OS_DB_PASSWORD` e `BILLING_DB_PASSWORD` serão usados pelo Job Kubernetes de bootstrap para criar usuários e bancos exclusivos; não são usados para provisionar a instância RDS.
 
