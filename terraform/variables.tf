@@ -1,7 +1,11 @@
 variable "aws_region" {
   description = "AWS region where the existing shared network and RDS live."
   type        = string
-  default     = "us-east-1"
+
+  validation {
+    condition     = can(regex("^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$", var.aws_region))
+    error_message = "aws_region must be a valid AWS region name."
+  }
 }
 
 variable "environment" {
@@ -13,13 +17,11 @@ variable "environment" {
 variable "db_name" {
   description = "Initial PostgreSQL database name."
   type        = string
-  default     = "oficina"
 }
 
 variable "db_username" {
   description = "PostgreSQL master username. Supply through TF_VAR_db_username in CI."
   type        = string
-  default     = "oficina_admin"
 }
 
 variable "db_password" {
@@ -35,7 +37,7 @@ variable "db_password" {
 }
 
 variable "db_instance_class" {
-  description = "RDS instance class; db.t4g.micro is the lowest-cost suitable PostgreSQL class in us-east-1."
+  description = "RDS instance class; db.t4g.micro is the lowest-cost suitable PostgreSQL class for this sandbox."
   type        = string
   default     = "db.t4g.micro"
 }

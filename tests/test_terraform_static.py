@@ -57,10 +57,49 @@ class TestDatabaseTerraform(unittest.TestCase):
 
     def test_workflow_exists_and_uses_required_secrets(self):
         workflow = (ROOT / ".github" / "workflows" / "terraform.yml").read_text()
-        for secret in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "DB_USERNAME", "DB_PASSWORD"):
+        for secret in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "DB_PASSWORD"):
             self.assertIn(secret, workflow)
         self.assertIn("plan-database.sh", workflow)
         self.assertIn("apply-database.sh", workflow)
+
+    def test_backend_is_partial_and_account_portable(self):
+        providers = (TERRAFORM / "providers.tf").read_text()
+        executable = "\n".join(
+            path.read_text()
+            for path in (
+                *TERRAFORM.glob("*.tf"),
+                ROOT / ".github" / "workflows" / "terraform.yml",
+            )
+        )
+
+        self.assertIn('backend "s3" {}', providers)
+        self.assertNotIn("terraform-state-", providers)
+        self.assertNotIn("264040538379", executable)
+
+    def test_workflow_validates_prs_and_applies_only_manually(self):
+        workflow = (ROOT / ".github" / "workflows" / "terraform.yml").read_text()
+
+        self.assertIn("pull_request:", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("push:", workflow)
+        self.assertIn("environment: sandbox", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn("init -backend=false", workflow)
+
+    def test_workflow_uses_database_variables_and_secret(self):
+        workflow = (ROOT / ".github" / "workflows" / "terraform.yml").read_text()
+
+        for variable in ("AWS_REGION", "TF_STATE_BUCKET", "DB_NAME", "DB_USERNAME"):
+            self.assertIn(f"vars.{variable}", workflow)
+        self.assertIn("secrets.DB_PASSWORD", workflow)
+        self.assertIn("scripts/validate-sandbox-config.sh", workflow)
+
+    def test_database_scripts_initialize_the_remote_state_key(self):
+        for name in ("plan-database.sh", "apply-database.sh"):
+            script = (ROOT / "scripts" / name).read_text()
+            self.assertIn('key=database/terraform.tfstate', script)
+            self.assertIn("TF_STATE_BUCKET", script)
+            self.assertIn("AWS_REGION", script)
 
 
 if __name__ == "__main__":
