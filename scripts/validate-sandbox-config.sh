@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for name in AWS_REGION TF_STATE_BUCKET; do
-  if [[ -z "${!name:-}" ]]; then
-    printf 'Missing required configuration: %s\n' "$name" >&2
-    exit 2
-  fi
-done
-
 account_id="$(
   AWS_PAGER='' aws --no-cli-pager --region "$AWS_REGION" \
     sts get-caller-identity --query Account --output text

@@ -59,23 +59,19 @@ Use `TFVARS_FILE=/caminho/arquivo.tfvars` para outro arquivo. Não coloque `db_p
 
 ## GitHub Actions
 
-Configure os GitHub Secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` e `DB_PASSWORD`. Configure as GitHub Variables `AWS_REGION`, `TF_STATE_BUCKET`, `DB_NAME` e `DB_USERNAME`.
+Configure os GitHub Secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `DB_PASSWORD`, `OS_DB_PASSWORD` e `BILLING_DB_PASSWORD`. Configure as GitHub Variables `AWS_REGION`, `TF_STATE_BUCKET`, `EKS_CLUSTER_NAME`, `DB_NAME`, `DB_USERNAME`, `OS_DATABASE`, `OS_DATABASE_USERNAME`, `BILLING_DATABASE` e `BILLING_DATABASE_USERNAME`.
 
-Pull requests executam format, init sem backend remoto, validate e testes estáticos sem acessar a AWS. Plan e apply executam somente por `workflow_dispatch`, protegidos pelo environment `sandbox`. O preflight confirma identidade, acesso ao bucket e existência da VPC compartilhada antes de planejar o RDS.
+Pull requests executam format, init sem backend remoto, validate e todos os testes sem acessar a AWS. Plan, apply e bootstrap executam somente por `workflow_dispatch`, protegidos pelo environment `sandbox`. Antes de autenticar na AWS, o workflow confirma localmente todas as Variables e Secrets obrigatórias. Depois da autenticação, confirma identidade, acesso ao bucket e existência da VPC compartilhada antes de planejar o RDS.
 
 As credenciais de serviço são separadas da credencial administradora do RDS. `OS_DB_PASSWORD` e `BILLING_DB_PASSWORD` serão usados pelo Job Kubernetes de bootstrap para criar usuários e bancos exclusivos; não são usados para provisionar a instância RDS.
 
-## Bootstrap dos bancos lógicos no EKS
+## Bootstrap automático dos bancos lógicos no EKS
 
-O RDS é privado, portanto o runner público do GitHub não executa `psql` diretamente. Depois do apply do RDS e da criação do namespace `oficina`, obtenha `rds_endpoint` com `terraform output` e disponibilize estas variáveis apenas na sessão segura que possui acesso ao cluster:
+O RDS é privado, portanto o runner público do GitHub não executa `psql` diretamente. Depois do apply, o workflow obtém `rds_endpoint` e `rds_port` dos outputs do Terraform, atualiza o kubeconfig do EKS e executa o Job `database-bootstrap` dentro do namespace `oficina`.
 
-```text
-RDS_ENDPOINT, RDS_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD
-OS_DATABASE, OS_DATABASE_USERNAME, OS_DB_PASSWORD
-BILLING_DATABASE, BILLING_DATABASE_USERNAME, BILLING_DB_PASSWORD
-```
+O Job cria ou atualiza os usuários e bancos lógicos exclusivos de OS e Billing. A credencial administrativa existe em um Secret Kubernetes somente durante o bootstrap; o workflow remove esse Secret em uma etapa `always()`, inclusive quando o Job falha. O ConfigMap contém apenas o script sem credenciais.
 
-Sincronize o script e o Secret sem gerar arquivo contendo credenciais:
+Para recuperação ou diagnóstico manual, exporte `RDS_ENDPOINT`, `RDS_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `OS_DATABASE`, `OS_DATABASE_USERNAME`, `OS_DB_PASSWORD`, `BILLING_DATABASE`, `BILLING_DATABASE_USERNAME` e `BILLING_DB_PASSWORD`, e então sincronize o script e o Secret sem gerar arquivo contendo credenciais:
 
 ```bash
 ./scripts/render-database-bootstrap-secret.sh
@@ -90,7 +86,7 @@ kubectl -n oficina wait --for=condition=complete job/database-bootstrap --timeou
 kubectl -n oficina logs job/database-bootstrap
 ```
 
-O SQL é idempotente: cria roles e bancos quando ausentes e atualiza as senhas das roles quando já existem. Assim, uma renovação de secrets pode repetir o procedimento com segurança. O Job recebe `ttlSecondsAfterFinished`; para limpeza imediata, use `kubectl -n oficina delete job database-bootstrap`. Depois do bootstrap, execute os Jobs Alembic do OS Service e do Billing Service, cada um com sua própria credencial.
+O SQL é idempotente: cria roles e bancos quando ausentes e atualiza as senhas das roles quando já existem. Assim, uma renovação de secrets ou reconstrução do sandbox pode repetir o procedimento com segurança. O Job recebe `ttlSecondsAfterFinished`; para limpeza imediata, use `kubectl -n oficina delete job database-bootstrap`. Depois do bootstrap, os pipelines do OS Service e do Billing Service executam seus próprios Jobs Alembic, cada um com sua credencial isolada.
 
 ## Outputs e conexão da aplicação
 

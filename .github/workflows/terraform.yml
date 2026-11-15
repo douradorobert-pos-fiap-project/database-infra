@@ -42,6 +42,16 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      DB_NAME: ${{ vars.DB_NAME }}
+      DB_USERNAME: ${{ vars.DB_USERNAME }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      OS_DATABASE: ${{ vars.OS_DATABASE }}
+      OS_DATABASE_USERNAME: ${{ vars.OS_DATABASE_USERNAME }}
+      OS_DB_PASSWORD: ${{ secrets.OS_DB_PASSWORD }}
+      BILLING_DATABASE: ${{ vars.BILLING_DATABASE }}
+      BILLING_DATABASE_USERNAME: ${{ vars.BILLING_DATABASE_USERNAME }}
+      BILLING_DB_PASSWORD: ${{ secrets.BILLING_DB_PASSWORD }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_db_name: ${{ vars.DB_NAME }}
       TF_VAR_db_username: ${{ vars.DB_USERNAME }}
@@ -53,6 +63,13 @@ jobs:
         with:
           terraform_version: "1.15.8"
 
+      - name: Validate required deployment configuration
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: bash scripts/validate-deployment-config.sh
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -61,7 +78,7 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Validate sandbox prerequisites
+      - name: Validate AWS sandbox prerequisites
         run: bash scripts/validate-sandbox-config.sh
 
       - name: Terraform Plan with remote state
@@ -69,3 +86,36 @@ jobs:
 
       - name: Terraform Apply
         run: ./scripts/apply-database.sh
+
+      - name: Read RDS connection outputs
+        id: rds
+        run: |
+          printf 'endpoint=%s\n' "$(terraform -chdir=terraform output -raw rds_endpoint)" >> "$GITHUB_OUTPUT"
+          printf 'port=%s\n' "$(terraform -chdir=terraform output -raw rds_port)" >> "$GITHUB_OUTPUT"
+
+      - name: Update EKS kubeconfig
+        id: kubeconfig
+        run: |
+          aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+          kubectl get namespace oficina
+
+      - name: Synchronize database bootstrap resources
+        env:
+          RDS_ENDPOINT: ${{ steps.rds.outputs.endpoint }}
+          RDS_PORT: ${{ steps.rds.outputs.port }}
+        run: bash scripts/render-database-bootstrap-secret.sh
+
+      - name: Bootstrap logical databases
+        run: |
+          kubectl -n oficina delete job database-bootstrap --ignore-not-found
+          kubectl apply -f k8s/database-bootstrap-job.yaml
+          if ! kubectl -n oficina wait --for=condition=complete job/database-bootstrap --timeout=180s; then
+            kubectl -n oficina logs job/database-bootstrap || true
+            kubectl -n oficina describe job/database-bootstrap || true
+            exit 1
+          fi
+          kubectl -n oficina logs job/database-bootstrap
+
+      - name: Remove database administrator Secret
+        if: ${{ always() && steps.kubeconfig.outcome == 'success' }}
+        run: kubectl -n oficina delete secret database-bootstrap-secrets --ignore-not-found
