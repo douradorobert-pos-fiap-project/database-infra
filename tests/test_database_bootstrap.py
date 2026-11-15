@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 JOB = ROOT / "k8s" / "database-bootstrap-job.yaml"
 BOOTSTRAP = ROOT / "scripts" / "bootstrap-logical-databases.sh"
 SYNC = ROOT / "scripts" / "render-database-bootstrap-secret.sh"
+PREFLIGHT = ROOT / "scripts" / "validate-sandbox-config.sh"
+WORKFLOW = ROOT / ".github" / "workflows" / "terraform.yml"
 
 
 def _fake_kubectl(temp_path: Path) -> tuple[Path, Path]:
@@ -32,6 +34,83 @@ fi
 
 
 class TestDatabaseBootstrap(unittest.TestCase):
+    def test_deploy_workflow_bootstraps_databases_after_terraform_apply(self):
+        workflow = WORKFLOW.read_text()
+
+        for variable in (
+            "EKS_CLUSTER_NAME",
+            "DB_NAME",
+            "DB_USERNAME",
+            "OS_DATABASE",
+            "OS_DATABASE_USERNAME",
+            "BILLING_DATABASE",
+            "BILLING_DATABASE_USERNAME",
+        ):
+            self.assertIn(f"vars.{variable}", workflow)
+        for secret in ("DB_PASSWORD", "OS_DB_PASSWORD", "BILLING_DB_PASSWORD"):
+            self.assertIn(f"secrets.{secret}", workflow)
+
+        apply_position = workflow.index("./scripts/apply-database.sh")
+        output_position = workflow.index("output -raw rds_endpoint")
+        kubeconfig_position = workflow.index("aws eks update-kubeconfig")
+        render_position = workflow.index("scripts/render-database-bootstrap-secret.sh")
+        job_position = workflow.index("kubectl apply -f k8s/database-bootstrap-job.yaml")
+        self.assertLess(apply_position, output_position)
+        self.assertLess(output_position, kubeconfig_position)
+        self.assertLess(kubeconfig_position, render_position)
+        self.assertLess(render_position, job_position)
+        self.assertIn("kubectl -n oficina wait", workflow)
+        self.assertIn("kubectl -n oficina logs job/database-bootstrap", workflow)
+        self.assertIn("id: kubeconfig", workflow)
+        self.assertIn(
+            "if: ${{ always() && steps.kubeconfig.outcome == 'success' }}",
+            workflow,
+        )
+        self.assertIn(
+            "kubectl -n oficina delete secret database-bootstrap-secrets",
+            workflow,
+        )
+
+    def test_preflight_rejects_missing_bootstrap_value_before_aws_calls(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            aws_log = temp_path / "aws-called"
+            aws = temp_path / "aws"
+            aws.write_text(
+                "#!/usr/bin/env bash\n"
+                'touch "${FAKE_AWS_LOG}"\n'
+                "exit 99\n"
+            )
+            aws.chmod(0o755)
+            env = {
+                **os.environ,
+                "PATH": f"{temp_path}:{os.environ['PATH']}",
+                "FAKE_AWS_LOG": str(aws_log),
+                "AWS_REGION": "us-east-1",
+                "TF_STATE_BUCKET": "terraform-state-example",
+                "EKS_CLUSTER_NAME": "oficina-sandbox",
+                "DB_NAME": "oficina",
+                "DB_USERNAME": "oficina_admin",
+                "DB_PASSWORD": "admin-password",
+                "OS_DATABASE": "os_service_db",
+                "OS_DATABASE_USERNAME": "os_service_user",
+                "OS_DB_PASSWORD": "os-password",
+                "BILLING_DATABASE": "billing_service_db",
+                "BILLING_DATABASE_USERNAME": "billing_service_user",
+            }
+
+            result = subprocess.run(
+                ["bash", str(PREFLIGHT)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("BILLING_DB_PASSWORD", result.stderr)
+            self.assertFalse(aws_log.exists())
+
     def test_bootstrap_job_is_private_non_root_and_uses_secret_references(self):
         document = yaml.safe_load(JOB.read_text())
         pod = document["spec"]["template"]["spec"]
