@@ -59,6 +59,7 @@ class TestDatabaseTerraform(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "terraform.yml").read_text()
         for secret in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "DB_PASSWORD"):
             self.assertIn(secret, workflow)
+        self.assertIn("python3 -m unittest discover tests -v", workflow)
         self.assertIn("plan-database.sh", workflow)
         self.assertIn("apply-database.sh", workflow)
 
