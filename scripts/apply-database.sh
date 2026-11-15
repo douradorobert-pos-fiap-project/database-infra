@@ -10,5 +10,12 @@ if [[ ! -f "${tfvars_file}" ]]; then
   exit 1
 fi
 
-terraform -chdir="${terraform_dir}" init
+: "${TF_STATE_BUCKET:?TF_STATE_BUCKET is required}"
+: "${AWS_REGION:?AWS_REGION is required}"
+
+terraform -chdir="${terraform_dir}" init -input=false \
+  -backend-config="bucket=${TF_STATE_BUCKET}" \
+  -backend-config="key=database/terraform.tfstate" \
+  -backend-config="region=${AWS_REGION}" \
+  -backend-config="use_lockfile=true"
 terraform -chdir="${terraform_dir}" apply tfplan

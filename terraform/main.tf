@@ -66,3 +66,42 @@ resource "aws_db_instance" "postgresql" {
     Name = "${var.environment}-oficina-postgresql"
   }
 }
+
+resource "terraform_data" "logical_databases" {
+  count = var.enable_logical_database_bootstrap ? 1 : 0
+
+  triggers_replace = [
+    aws_db_instance.postgresql.address,
+    var.os_database,
+    var.os_database_username,
+    var.billing_database,
+    var.billing_database_username,
+  ]
+
+  provisioner "local-exec" {
+    command     = "${path.module}/../scripts/bootstrap-logical-databases.sh"
+    interpreter = ["/usr/bin/env", "bash"]
+    environment = {
+      PGHOST                    = aws_db_instance.postgresql.address
+      PGPORT                    = tostring(aws_db_instance.postgresql.port)
+      PGDATABASE                = var.db_name
+      PGUSER                    = var.db_username
+      PGPASSWORD                = var.db_password
+      OS_DATABASE               = var.os_database
+      OS_DATABASE_USER          = var.os_database_username
+      OS_DATABASE_PASSWORD      = var.os_db_password
+      BILLING_DATABASE          = var.billing_database
+      BILLING_DATABASE_USER     = var.billing_database_username
+      BILLING_DATABASE_PASSWORD = var.billing_db_password
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.os_db_password != null && var.billing_db_password != null
+      error_message = "os_db_password and billing_db_password are required when logical database bootstrap is enabled."
+    }
+  }
+
+  depends_on = [aws_db_instance.postgresql]
+}

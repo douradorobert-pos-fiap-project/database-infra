@@ -1,21 +1,50 @@
 name: Database Infrastructure
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init without remote backend
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Automated tests
+        working-directory: .
+        run: python3 -m unittest discover tests -v
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: sandbox
     env:
-      TF_VAR_db_username: ${{ vars.DB_USERNAME || 'oficina_admin' }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_db_name: ${{ vars.DB_NAME }}
+      TF_VAR_db_username: ${{ vars.DB_USERNAME }}
       TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
@@ -30,58 +59,13 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
+          aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Validate AWS identity
-        run: aws sts get-caller-identity
+      - name: Validate sandbox prerequisites
+        run: bash scripts/validate-sandbox-config.sh
 
-      - name: Terraform Format
-        run: terraform -chdir=terraform fmt -check -recursive
-
-      - name: Terraform Init
-        run: terraform -chdir=terraform init
-
-      - name: Terraform Validate
-        run: terraform -chdir=terraform validate
-
-      - name: Terraform Plan
+      - name: Terraform Plan with remote state
         run: ./scripts/plan-database.sh
 
       - name: Terraform Apply
         run: ./scripts/apply-database.sh
-
-  pr:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    env:
-      TF_VAR_db_username: ${{ vars.DB_USERNAME || 'oficina_admin' }}
-      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.15.8"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
-
-      - name: Validate AWS identity
-        run: aws sts get-caller-identity
-
-      - name: Terraform Format
-        run: terraform -chdir=terraform fmt -check -recursive
-
-      - name: Terraform Init
-        run: terraform -chdir=terraform init
-
-      - name: Terraform Validate
-        run: terraform -chdir=terraform validate
-
-      - name: Terraform Plan
-        run: ./scripts/plan-database.sh

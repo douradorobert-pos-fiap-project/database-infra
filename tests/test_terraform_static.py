@@ -30,17 +30,11 @@ class TestDatabaseTerraform(unittest.TestCase):
         self.assertIn('name   = "tag:Type"', self.data)
         self.assertIn('values = ["private"]', self.data)
 
-    def test_vpc_is_discovered_by_remote_state(self):
-        self.assertIn('data "terraform_remote_state" "infra"', self.data)
-        self.assertIn('backend = "s3"', self.data)
-        self.assertIn('data.terraform_remote_state.infra.outputs.vpc_id', self.data)
-
-    def test_no_hardcoded_vpc_ids(self):
-        self.assertNotRegex(self.data, r'id\s*=\s*"vpc-[0-9a-f]+"')
-
-    def test_remote_state_variables_exist(self):
-        self.assertIn('variable "infra_state_bucket"', self.variables)
-        self.assertIn('variable "infra_state_key"', self.variables)
+    def test_vpc_is_discovered_by_shared_infra_tags(self):
+        self.assertIn('data "aws_vpc" "shared"', self.data)
+        self.assertIn('name   = "tag:Name"', self.data)
+        self.assertIn('"${var.environment}-vpc"', self.data)
+        self.assertIn('name   = "tag:Environment"', self.data)
 
     def test_dedicated_security_group_and_private_postgres_rule(self):
         self.assertIn('resource "aws_security_group" "rds"', self.main)
@@ -63,10 +57,50 @@ class TestDatabaseTerraform(unittest.TestCase):
 
     def test_workflow_exists_and_uses_required_secrets(self):
         workflow = (ROOT / ".github" / "workflows" / "terraform.yml").read_text()
-        for secret in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "DB_USERNAME", "DB_PASSWORD"):
+        for secret in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "DB_PASSWORD"):
             self.assertIn(secret, workflow)
+        self.assertIn("python3 -m unittest discover tests -v", workflow)
         self.assertIn("plan-database.sh", workflow)
         self.assertIn("apply-database.sh", workflow)
+
+    def test_backend_is_partial_and_account_portable(self):
+        providers = (TERRAFORM / "providers.tf").read_text()
+        executable = "\n".join(
+            path.read_text()
+            for path in (
+                *TERRAFORM.glob("*.tf"),
+                ROOT / ".github" / "workflows" / "terraform.yml",
+            )
+        )
+
+        self.assertIn('backend "s3" {}', providers)
+        self.assertNotIn("terraform-state-", providers)
+        self.assertNotIn("264040538379", executable)
+
+    def test_workflow_validates_prs_and_applies_only_manually(self):
+        workflow = (ROOT / ".github" / "workflows" / "terraform.yml").read_text()
+
+        self.assertIn("pull_request:", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("push:", workflow)
+        self.assertIn("environment: sandbox", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn("init -backend=false", workflow)
+
+    def test_workflow_uses_database_variables_and_secret(self):
+        workflow = (ROOT / ".github" / "workflows" / "terraform.yml").read_text()
+
+        for variable in ("AWS_REGION", "TF_STATE_BUCKET", "DB_NAME", "DB_USERNAME"):
+            self.assertIn(f"vars.{variable}", workflow)
+        self.assertIn("secrets.DB_PASSWORD", workflow)
+        self.assertIn("scripts/validate-sandbox-config.sh", workflow)
+
+    def test_database_scripts_initialize_the_remote_state_key(self):
+        for name in ("plan-database.sh", "apply-database.sh"):
+            script = (ROOT / "scripts" / name).read_text()
+            self.assertIn('key=database/terraform.tfstate', script)
+            self.assertIn("TF_STATE_BUCKET", script)
+            self.assertIn("AWS_REGION", script)
 
 
 if __name__ == "__main__":

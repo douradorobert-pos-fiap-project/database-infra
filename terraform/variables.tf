@@ -1,7 +1,11 @@
 variable "aws_region" {
   description = "AWS region where the existing shared network and RDS live."
   type        = string
-  default     = "us-east-1"
+
+  validation {
+    condition     = can(regex("^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$", var.aws_region))
+    error_message = "aws_region must be a valid AWS region name."
+  }
 }
 
 variable "environment" {
@@ -10,28 +14,14 @@ variable "environment" {
   default     = "sandbox"
 }
 
-variable "infra_state_bucket" {
-  description = "S3 bucket where shared-infra Terraform state is stored."
-  type        = string
-  default     = "terraform-state-264040538379-us-east-1"
-}
-
-variable "infra_state_key" {
-  description = "S3 key of the shared-infra Terraform state file."
-  type        = string
-  default     = "sandbox/terraform.tfstate"
-}
-
 variable "db_name" {
   description = "Initial PostgreSQL database name."
   type        = string
-  default     = "oficina"
 }
 
 variable "db_username" {
   description = "PostgreSQL master username. Supply through TF_VAR_db_username in CI."
   type        = string
-  default     = "oficina_admin"
 }
 
 variable "db_password" {
@@ -47,7 +37,7 @@ variable "db_password" {
 }
 
 variable "db_instance_class" {
-  description = "RDS instance class; db.t4g.micro is the lowest-cost suitable PostgreSQL class in us-east-1."
+  description = "RDS instance class; db.t4g.micro is the lowest-cost suitable PostgreSQL class for this sandbox."
   type        = string
   default     = "db.t4g.micro"
 }
@@ -84,4 +74,48 @@ variable "skip_final_snapshot" {
   description = "Whether to skip a final snapshot when destroying the sandbox database."
   type        = bool
   default     = true
+}
+
+variable "enable_logical_database_bootstrap" {
+  description = "Run local psql bootstrap only from a runner with private RDS connectivity."
+  type        = bool
+  default     = false
+}
+
+variable "os_database" {
+  description = "Logical database owned exclusively by OS Service."
+  type        = string
+  default     = "os_service_db"
+}
+
+variable "os_database_username" {
+  description = "Login role owned exclusively by OS Service."
+  type        = string
+  default     = "os_service_user"
+}
+
+variable "os_db_password" {
+  description = "OS Service logical database password."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "billing_database" {
+  description = "Logical database owned exclusively by Billing Service."
+  type        = string
+  default     = "billing_service_db"
+}
+
+variable "billing_database_username" {
+  description = "Login role owned exclusively by Billing Service."
+  type        = string
+  default     = "billing_service_user"
+}
+
+variable "billing_db_password" {
+  description = "Billing Service logical database password."
+  type        = string
+  sensitive   = true
+  default     = null
 }
