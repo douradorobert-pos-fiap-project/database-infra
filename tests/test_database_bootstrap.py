@@ -34,6 +34,88 @@ fi
 
 
 class TestDatabaseBootstrap(unittest.TestCase):
+    def test_bootstrap_executes_with_alpine_posix_shell(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            psql_log = temp_path / "psql.log"
+            psql = temp_path / "psql"
+            psql.write_text(
+                "#!/bin/sh\n"
+                "case \"$*\" in\n"
+                "  *database_name=*) ;;\n"
+                "  *role_name=*)\n"
+                '    [ "${BOOTSTRAP_ROLE_PASSWORD:-}" = "${EXPECTED_ROLE_PASSWORD}" ] || exit 91\n'
+                "    ;;\n"
+                "esac\n"
+                'printf \'ARGS:%s\\n\' "$*" >> "${FAKE_PSQL_LOG}"\n'
+                'cat >> "${FAKE_PSQL_LOG}"\n'
+            )
+            psql.chmod(0o755)
+            password = "p@ss:word/%value"
+            env = {
+                **os.environ,
+                "PATH": f"{temp_path}:{os.environ['PATH']}",
+                "FAKE_PSQL_LOG": str(psql_log),
+                "EXPECTED_ROLE_PASSWORD": password,
+                "PGHOST": "sandbox.example.rds.amazonaws.com",
+                "PGPORT": "5432",
+                "PGDATABASE": "oficina",
+                "PGUSER": "oficina_admin",
+                "PGPASSWORD": password,
+                "OS_DATABASE": "os_service_db",
+                "OS_DATABASE_USER": "os_service_user",
+                "OS_DATABASE_PASSWORD": password,
+                "BILLING_DATABASE": "billing_service_db",
+                "BILLING_DATABASE_USER": "billing_service_user",
+                "BILLING_DATABASE_PASSWORD": password,
+            }
+
+            result = subprocess.run(
+                ["/bin/sh", str(BOOTSTRAP)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            log = psql_log.read_text()
+            self.assertEqual(log.count("ARGS:"), 4)
+            self.assertIn("\\getenv role_password BOOTSTRAP_ROLE_PASSWORD", log)
+            self.assertNotIn(password, log)
+
+    def test_bootstrap_propagates_psql_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            psql = temp_path / "psql"
+            psql.write_text("#!/bin/sh\nexit 42\n")
+            psql.chmod(0o755)
+            env = {
+                **os.environ,
+                "PATH": f"{temp_path}:{os.environ['PATH']}",
+                "PGHOST": "sandbox.example.rds.amazonaws.com",
+                "PGPORT": "5432",
+                "PGDATABASE": "oficina",
+                "PGUSER": "oficina_admin",
+                "PGPASSWORD": "admin-password",
+                "OS_DATABASE": "os_service_db",
+                "OS_DATABASE_USER": "os_service_user",
+                "OS_DATABASE_PASSWORD": "os-password",
+                "BILLING_DATABASE": "billing_service_db",
+                "BILLING_DATABASE_USER": "billing_service_user",
+                "BILLING_DATABASE_PASSWORD": "billing-password",
+            }
+
+            result = subprocess.run(
+                ["/bin/sh", str(BOOTSTRAP)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 42)
+
     def test_deploy_workflow_bootstraps_databases_after_terraform_apply(self):
         workflow = WORKFLOW.read_text()
 
@@ -147,6 +229,7 @@ class TestDatabaseBootstrap(unittest.TestCase):
         self.assertIn("WHERE NOT EXISTS (SELECT 1 FROM pg_roles", script)
         self.assertIn("ALTER ROLE %I LOGIN PASSWORD %L", script)
         self.assertIn("WHERE NOT EXISTS (SELECT 1 FROM pg_database", script)
+        self.assertIn("ALTER DATABASE %I OWNER TO %I", script)
         self.assertIn('bootstrap_service "$OS_DATABASE"', script)
         self.assertIn('bootstrap_service "$BILLING_DATABASE"', script)
 
